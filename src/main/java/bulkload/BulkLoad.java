@@ -52,7 +52,6 @@ import org.apache.cassandra.io.sstable.CQLSSTableWriter;
  */
 public class BulkLoad
 {
-    //public static final String CSV_FILE = "/home/jjo31420/ocient/git/cassandra-bulkload-example/data/input.csv";
 
     /** Default output directory */
     public static final String DEFAULT_OUTPUT_DIR = "./data";
@@ -137,9 +136,15 @@ public class BulkLoad
         long numPackets = bb.getInt() & 0xffffffffL; 
         long numBytes = bb.getInt() & 0xffffffffL; 
         //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
-        long startTime = bb.getLong();              
+        long startTime = bb.getLong();
+        if (startTime < 2000000000) {
+            startTime = startTime * 1000;
+        }
         //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
         long endTime = bb.getLong();               
+        if (endTime < 2000000000) {
+            endTime = endTime * 1000;
+        }
         String localIp = toNtoa(bb.getInt() & 0xffffffffL); 
         String remoteIp = toNtoa(bb.getInt() & 0xffffffffL); 
         int port = bb.getShort() & 0xffff;
@@ -154,7 +159,9 @@ public class BulkLoad
         int timeIndex = 0;
 
         try {
+            //System.out.format("   %s, %s, %d, %d, %d, %d, %d, %d, %d, %d \n", localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason); 
             writer.addRow(localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason);
+            counter = counter + 1;
         }
         catch (InvalidRequestException e)
         {
@@ -163,13 +170,13 @@ public class BulkLoad
 
         bb.clear();
         if ((counter % 10000) == 0) {
-            System.out.format("   Processed: %d\n", counter); 
+            System.out.format("   Processed: %d records\n", counter); 
         }
-        counter = counter + 1;
+        
       }
       channel.close();
       fis.close();
-      System.out.format("Done! %d\n", counter); 
+      System.out.format("Done! %d records read and written \n", counter); 
     }
 
 

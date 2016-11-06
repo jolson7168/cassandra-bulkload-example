@@ -16,7 +16,18 @@ Run:
 
     $ ./gradlew run
 
+    Starting file: ./data/expanded1473840840.bin
+       Processed: 0
+       Processed: 10000
+       Processed: 20000
+    Done! 29769
+
+    BUILD SUCCESSFUL
+
+    Total time: 6.544 secs
+
 This will generate SSTable(s) under the `data` directory.
+
 
 ## Bulk loading
 
