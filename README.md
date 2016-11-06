@@ -51,7 +51,7 @@ Then, load SSTables to Cassandra using `sstableloader`:
     [cqlsh 5.0.1 | Cassandra 2.1.0 | CQL spec 3.2.0 | Native protocol v3]
     Use HELP for help.
     cqlsh> USE netflow ;
-    cqlsh:quote> SELECT * FROM localIP WHERE localIP = '' LIMIT 3;
+    cqlsh:quote> SELECT * FROM localIP WHERE localIP = '10.1.106.65' LIMIT 3;
 
      local_ip    | start_time | end_reason | end_time   | num_bytes | num_packets | port | protocol | remote_ip   | time_index
     -------------+------------+------------+------------+-----------+-------------+------+----------+-------------+------------
