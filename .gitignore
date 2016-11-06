@@ -4,9 +4,6 @@
 .gradle
 build/
 
-# data
-data/
-
 # IntelliJ
 *.iml
 *.idea/
