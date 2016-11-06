@@ -84,6 +84,8 @@ Voilà!
 
  0. Lock down the clustering / partition keys!!
  1. Lock down input set
+    a. What defines uniqueness in the input set, especially considering expansion?
+    b. Timestamps denominated with / without microseconds?
  2. Lock down data types
     a. inet / ascii for the ip addresses
     b. timestamp / bigint for the timestamps
