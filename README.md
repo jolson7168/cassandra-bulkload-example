@@ -51,5 +51,7 @@ Voilà!
 ## To do:
 
  1. Lock down input set
- 2. Lock down data type
+ 2. Lock down data types
+ 3. Improve logging
+ 
  
