@@ -1,6 +1,7 @@
 # cassandra-bulkload
 
 SSTable generating and bulk loading code modeled on DataStax [Using Cassandra Bulk Loader, Updated](http://www.datastax.com/dev/blog/using-the-cassandra-bulk-loader-updated) blog post.
+
 Modified to load bulk netflow data
 
 ## Generating SSTables
