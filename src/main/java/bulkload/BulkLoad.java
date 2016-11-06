@@ -17,12 +17,24 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InputStream;
+import java.io.FileInputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
+
 import java.math.BigDecimal;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.supercsv.io.CsvListReader;
 import org.supercsv.prefs.CsvPreference;
@@ -32,12 +44,15 @@ import org.apache.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.sstable.CQLSSTableWriter;
 
+
+    
+
 /**
  * Usage: java bulkload.BulkLoad
  */
 public class BulkLoad
 {
-    public static final String CSV_URL = "http://real-chart.finance.yahoo.com/table.csv?s=%s";
+    //public static final String CSV_FILE = "/home/jjo31420/ocient/git/cassandra-bulkload-example/data/input.csv";
 
     /** Default output directory */
     public static final String DEFAULT_OUTPUT_DIR = "./data";
@@ -45,9 +60,9 @@ public class BulkLoad
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
     /** Keyspace name */
-    public static final String KEYSPACE = "quote";
+    public static final String KEYSPACE = "netflow";
     /** Table name */
-    public static final String TABLE = "historical_prices";
+    public static final String TABLE = "localIP";
 
     /**
      * Schema for bulk loading table.
@@ -55,32 +70,114 @@ public class BulkLoad
      * otherwise CQLSSTableWriter throws exception.
      */
     public static final String SCHEMA = String.format("CREATE TABLE %s.%s (" +
-                                                          "ticker ascii, " +
-                                                          "date timestamp, " +
-                                                          "open decimal, " +
-                                                          "high decimal, " +
-                                                          "low decimal, " +
-                                                          "close decimal, " +
-                                                          "volume bigint, " +
-                                                          "adj_close decimal, " +
-                                                          "PRIMARY KEY (ticker, date) " +
-                                                      ") WITH CLUSTERING ORDER BY (date DESC)", KEYSPACE, TABLE);
+                                                          "local_ip	    ascii, " +
+                                                          "remote_ip	ascii, " +
+                                                         // "local_port	int, " +
+                                                         // "remote_port  int, " +
+                                                          "port         int, " +
+                                                          "time_index   int, " +
+                                                          "num_packets	bigint, " +
+                                                          "num_bytes	bigint, " +
+                                                          "start_time	bigint, " +
+                                                          "end_time	    bigint, " +
+                                                          "protocol	    int, " +
+                                                          "end_reason	int, " +
+                                                          "PRIMARY KEY (local_ip, start_time) )" , KEYSPACE, TABLE);
 
     /**
      * INSERT statement to bulk load.
      * It is like prepared statement. You fill in place holder for each data.
      */
     public static final String INSERT_STMT = String.format("INSERT INTO %s.%s (" +
-                                                               "ticker, date, open, high, low, close, volume, adj_close" +
+//                                                            "local_ip,remote_ip,local_port,remote_port,time_index,num_packets,num_bytes,start_time,end_time,protocol,end_reason" +
+                                                           "local_ip,remote_ip,port,time_index,num_packets,num_bytes,start_time,end_time,protocol,end_reason" +
                                                            ") VALUES (" +
-                                                               "?, ?, ?, ?, ?, ?, ?, ?" +
+//                                                               "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" +
+                                                               "?, ?, ?, ?, ?, ?, ?, ?, ?, ?" +
                                                            ")", KEYSPACE, TABLE);
+
+    private static List<String> readFile(String fileName) {
+
+		List<String> list = new ArrayList<>();
+
+		try (Stream<String> stream = Files.lines(Paths.get(fileName))) {
+
+			list = stream.map(String::toLowerCase).collect(Collectors.toList());
+
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+        return list;
+    }
+
+
+    private static String toNtoa(long raw) {
+        byte[] b = new byte[] {(byte)(raw >> 24), (byte)(raw >> 16), (byte)(raw >> 8), (byte)raw};
+        try {
+            return InetAddress.getByAddress(b).getHostAddress();
+        } catch (UnknownHostException e) {
+            //No way here
+            return null;
+        }
+    } 
+
+
+    private static void readFromNIO(String fileName, CQLSSTableWriter writer) throws IOException{
+      System.out.format("Starting file: %s\n", fileName); 
+      FileInputStream fis = new FileInputStream(new File(fileName));
+      FileChannel channel = fis.getChannel();
+      ByteBuffer bb = ByteBuffer.allocateDirect(37);
+      bb.order(ByteOrder.LITTLE_ENDIAN);
+      bb.clear();
+      long len = 0;
+      int counter = 0;
+      while ((len = channel.read(bb))!= -1){
+        bb.flip();
+        long numPackets = bb.getInt() & 0xffffffffL; 
+        long numBytes = bb.getInt() & 0xffffffffL; 
+        //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
+        long startTime = bb.getLong();              
+        //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
+        long endTime = bb.getLong();               
+        String localIp = toNtoa(bb.getInt() & 0xffffffffL); 
+        String remoteIp = toNtoa(bb.getInt() & 0xffffffffL); 
+        int port = bb.getShort() & 0xffff;
+        int protocol = bb.getShort() & 0xffff;
+        int dirAndReason= bb.get();
+
+        // Send to Cassandra
+        // We use Java types here based on
+        // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
+
+        // TODO: fix this...
+        int timeIndex = 0;
+
+        try {
+            writer.addRow(localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason);
+        }
+        catch (InvalidRequestException e)
+        {
+            e.printStackTrace();
+        }
+
+        bb.clear();
+        if ((counter % 10000) == 0) {
+            System.out.format("   Processed: %d\n", counter); 
+        }
+        counter = counter + 1;
+      }
+      channel.close();
+      fis.close();
+      System.out.format("Done! %d\n", counter); 
+    }
+
 
     public static void main(String[] args)
     {
         if (args.length == 0)
         {
-            System.out.println("usage: java bulkload.BulkLoad <list of ticker symbols>");
+            System.out.println("usage: java bulkload.BulkLoad <file containing .bin path + file names>");
             return;
         }
 
@@ -93,7 +190,6 @@ public class BulkLoad
         {
             throw new RuntimeException("Cannot create output directory: " + outputDir);
         }
-
         // Prepare SSTable writer
         CQLSSTableWriter.Builder builder = CQLSSTableWriter.builder();
         // set output directory
@@ -107,52 +203,20 @@ public class BulkLoad
                .withPartitioner(new Murmur3Partitioner());
         CQLSSTableWriter writer = builder.build();
 
-        for (String ticker : args)
-        {
-            HttpURLConnection conn;
-            try
-            {
-                URL url = new URL(String.format(CSV_URL, ticker));
-                conn = (HttpURLConnection) url.openConnection();
-            }
-            catch (IOException e)
-            {
-                throw new RuntimeException(e);
-            }
 
-            try (
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                CsvListReader csvReader = new CsvListReader(reader, CsvPreference.STANDARD_PREFERENCE)
-            )
-            {
-                if (conn.getResponseCode() != HttpURLConnection.HTTP_OK)
-                {
-                    System.out.println("Historical data not found for " + ticker);
-                    continue;
-                }
+        List<String> fileArray =  new ArrayList<String>();
 
-                csvReader.getHeader(true);
+        for (String fileName: args) {
+            fileArray.addAll(readFile(fileName));
+        }
 
-                // Write to SSTable while reading data
-                List<String> line;
-                while ((line = csvReader.read()) != null)
-                {
-                    // We use Java types here based on
-                    // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
-                    writer.addRow(ticker,
-                                  DATE_FORMAT.parse(line.get(0)),
-                                  new BigDecimal(line.get(1)),
-                                  new BigDecimal(line.get(2)),
-                                  new BigDecimal(line.get(3)),
-                                  new BigDecimal(line.get(4)),
-                                  Long.parseLong(line.get(5)),
-                                  new BigDecimal(line.get(6)));
-                }
-            }
-            catch (InvalidRequestException | ParseException | IOException e)
-            {
-                e.printStackTrace();
-            }
+        for (String fileName: fileArray) {
+            try {
+                readFromNIO(fileName, writer);
+            } catch (IOException e) {
+			    e.printStackTrace();
+		    }
+   
         }
 
         try
