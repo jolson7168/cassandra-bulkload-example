@@ -52,6 +52,10 @@ Voilà!
 
  1. Lock down input set
  2. Lock down data types
+    a. inet / ascii for the ip addresses
+    b. timestamp / bigint for the timestamps
+    c. since smallint, tinyint don't seem to be able to be loaded with the bulk import, keep these as ints, or update after load??
  3. Improve logging
+ 4. Do some benchmarking
  
  
