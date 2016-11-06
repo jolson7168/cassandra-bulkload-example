@@ -2,20 +2,21 @@
 
 SSTable generating and bulk loading code modeled on DataStax [Using Cassandra Bulk Loader, Updated](http://www.datastax.com/dev/blog/using-the-cassandra-bulk-loader-updated) blog post.
 
-Modified to load bulk netflow data
+Modified to load bulk netflow data.
 
 ## Generating SSTables
 
 Setup:
     
 Modify 'args' in build.gradle to point to a text file listing the .bin files you wish to load.
-Sample file ./data/allFiles.txt included as an exmple.
+
+Sample file ./data/allFiles.txt included as an example.
 
 Run:
 
     $ ./gradlew run
 
-This will generate SSTable(s) under `data` directory.
+This will generate SSTable(s) under the `data` directory.
 
 ## Bulk loading
 
