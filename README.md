@@ -7,8 +7,8 @@ Modified to load bulk netflow data
 
 Setup:
     
-    Modify 'args' in build.gradle to point to a text file listing the .bin files you wish to load.
-    Sample file ./data/allFiles.txt included as an exmple.
+Modify 'args' in build.gradle to point to a text file listing the .bin files you wish to load.
+Sample file ./data/allFiles.txt included as an exmple.
 
 Run:
 
@@ -20,11 +20,26 @@ This will generate SSTable(s) under `data` directory.
 
 First, create schema using `schema.cql` file:
 
-    $ cqlsh -f schema.cql
+    $ cqlsh -u <user> -p <password> -f schema.cql
 
 Then, load SSTables to Cassandra using `sstableloader`:
 
-    $ sstableloader -d <ip address of the node> data/netflow/localIP
+    $ sstableloader -u <user> -pw <password> -d <ip address of the node> ./data/netflow/localIP
+
+    Established connection to initial hosts
+    Opening sstables and calculating sections to stream
+    Streaming relevant part of /home/ubuntu/cassandra-bulkload-example/data/netflow/localIP/netflow-localip-ka-1-Data.db to [localhost/127.0.0.1]
+    progress: [localhost/127.0.0.1]0:1/1 100% total: 100% 2.619KiB/s (avg: 2.619KiB/s)
+    progress: [localhost/127.0.0.1]0:1/1 100% total: 100% 0.000KiB/s (avg: 2.479KiB/s)
+
+    Summary statistics: 
+       Connections per host    : 1         
+       Total files transferred : 1         
+       Total bytes transferred : 10.869KiB 
+       Total duration          : 4385 ms   
+       Average transfer rate   : 2.478KiB/s
+       Peak transfer rate      : 2.619KiB/s
+
 
 (assuming you have `cqlsh` and `sstableloader` in your `$PATH`)
 
@@ -38,7 +53,11 @@ Then, load SSTables to Cassandra using `sstableloader`:
     cqlsh> USE netflow ;
     cqlsh:quote> SELECT * FROM localIP WHERE localIP = '' LIMIT 3;
 
-
+     local_ip    | start_time | end_reason | end_time   | num_bytes | num_packets | port | protocol | remote_ip   | time_index
+    -------------+------------+------------+------------+-----------+-------------+------+----------+-------------+------------
+     10.1.106.65 | 1473840840 |          5 | 1475852089 |       770 |          13 | 3544 |       17 | 65.4.81.187 |          0
+     10.1.106.65 | 1473840841 |          5 | 1475587549 |       343 |           7 | 3544 |       17 | 65.4.81.187 |          0
+     10.1.106.65 | 1473840842 |          5 | 1476390621 |       639 |          11 | 3544 |       17 | 89.82.140.1 |          0
 
     (3 rows)
 
@@ -50,6 +69,7 @@ Voilà!
 
 ## To do:
 
+ 0. Lock down the clustering / partition keys!!
  1. Lock down input set
  2. Lock down data types
     a. inet / ascii for the ip addresses
