@@ -61,39 +61,52 @@ public class BulkLoad
     /** Keyspace name */
     public static final String KEYSPACE = "netflow";
     /** Table name */
-    public static final String TABLE = "localIP";
+    public static final String CONNECTIONSTABLE = "connections";
+    public static final String NETFLOWTABLE = "netflow";
 
     /**
      * Schema for bulk loading table.
      * It is important not to forget adding keyspace name before table name,
      * otherwise CQLSSTableWriter throws exception.
      */
-    public static final String SCHEMA = String.format("CREATE TABLE %s.%s (" +
-                                                          "local_ip	    ascii, " +
-                                                          "remote_ip	ascii, " +
-                                                         // "local_port	int, " +
-                                                         // "remote_port  int, " +
-                                                          "port         int, " +
-                                                          "time_index   int, " +
-                                                          "num_packets	bigint, " +
-                                                          "num_bytes	bigint, " +
-                                                          "start_time	bigint, " +
-                                                          "end_time	    bigint, " +
-                                                          "protocol	    int, " +
-                                                          "end_reason	int, " +
-                                                          "PRIMARY KEY (local_ip, start_time) )" , KEYSPACE, TABLE);
+    public static final String NETFLOWSCHEMA = String.format("CREATE TABLE %s.%s ("+
+                                                          "connection_id    int, " +
+                                                          "time_index       int, " +
+                                                          "num_packets	    bigint, " +
+                                                          "num_bytes	    bigint, " +
+                                                          "start_time	    bigint, " +
+                                                          "end_time	        bigint, " +
+                                                          "protocol	        int, " +
+                                                          "end_reason	    int, " +
+                                                          "PRIMARY KEY (connection_id, time_index) )" , KEYSPACE, NETFLOWTABLE);
+
+
+    public static final String CONNECTIONSCHEMA = String.format("CREATE TABLE %s.%s (" +
+	                                                        "local_ip	bigint," +
+	                                                        "local_port	int, "+
+	                                                        "remote_ip	bigint," +
+                                                            "connection_id bigint," +
+	                                                        "primary key (local_ip, remote_ip, local_port) )", KEYSPACE, CONNECTIONSTABLE);
+
+
+
 
     /**
      * INSERT statement to bulk load.
      * It is like prepared statement. You fill in place holder for each data.
      */
-    public static final String INSERT_STMT = String.format("INSERT INTO %s.%s (" +
-//                                                            "local_ip,remote_ip,local_port,remote_port,time_index,num_packets,num_bytes,start_time,end_time,protocol,end_reason" +
-                                                           "local_ip,remote_ip,port,time_index,num_packets,num_bytes,start_time,end_time,protocol,end_reason" +
+    public static final String INSERT_NETFLOW = String.format("INSERT INTO %s.%s (" +
+                                                           "connection_id,time_index,num_packets,num_bytes,start_time,end_time,protocol,end_reason" +
                                                            ") VALUES (" +
-//                                                               "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" +
-                                                               "?, ?, ?, ?, ?, ?, ?, ?, ?, ?" +
-                                                           ")", KEYSPACE, TABLE);
+                                                               "?, ?, ?, ?, ?, ?, ?, ?" +
+                                                           ")", KEYSPACE, NETFLOWTABLE);
+
+    public static final String INSERT_CONNECTION = String.format("INSERT INTO %s.%s (" +
+                                                            "local_ip, local_port, remote_ip, connection_id" +
+                                                           ") VALUES (" +
+                                                               "?, ?, ?, ?" +
+                                                           ")", KEYSPACE, CONNECTIONSTABLE);
+
 
     private static List<String> readFile(String fileName) {
 
@@ -122,8 +135,8 @@ public class BulkLoad
     } 
 
 
-    private static void readFromNIO(String fileName, CQLSSTableWriter writer) throws IOException{
-      System.out.format("Starting file: %s\n", fileName); 
+    private static void readFromNIONetflow(String fileName, CQLSSTableWriter writer) throws IOException{
+      System.out.format("Starting netflow file: %s\n", fileName); 
       FileInputStream fis = new FileInputStream(new File(fileName));
       FileChannel channel = fis.getChannel();
       ByteBuffer bb = ByteBuffer.allocateDirect(37);
@@ -159,7 +172,7 @@ public class BulkLoad
         int timeIndex = 0;
 
         try {
-            //System.out.format("   %s, %s, %d, %d, %d, %d, %d, %d, %d, %d \n", localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason); 
+            System.out.format("%s, %s, %d, %d, %d, %d, %d, %d, %d, %d \n", localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason); 
             writer.addRow(localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason);
             counter = counter + 1;
         }
@@ -180,6 +193,48 @@ public class BulkLoad
     }
 
 
+    private static void readFromNIOPartition(String fileName, CQLSSTableWriter writer) throws IOException{
+      System.out.format("Starting connection file: %s\n", fileName); 
+      FileInputStream fis = new FileInputStream(new File(fileName));
+      FileChannel channel = fis.getChannel();
+      ByteBuffer bb = ByteBuffer.allocateDirect(14);
+      bb.order(ByteOrder.LITTLE_ENDIAN);
+      bb.clear();
+      long len = 0;
+      int counter = 0;
+      while ((len = channel.read(bb))!= -1){
+        bb.flip();
+        long localIp = bb.getInt() & 0xffffffffL; 
+        long remoteIp = bb.getInt() & 0xffffffffL; 
+        int port = bb.getShort() & 0xffff;
+        long connectionId = bb.getInt() & 0xffffffffL; 
+
+        // Send to Cassandra
+        // We use Java types here based on
+        // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
+
+
+        try {
+            //System.out.format("%d, %d, %d, %d\n", localIp, remoteIp, port, connectionId); 
+            writer.addRow(localIp, port, remoteIp, connectionId);
+            counter = counter + 1;
+        }
+        catch (InvalidRequestException e)
+        {
+            e.printStackTrace();
+        }
+
+        bb.clear();
+        if ((counter % 10000) == 0) {
+            System.out.format("   Processed: %d records\n", counter); 
+        }
+        
+      }
+      channel.close();
+      fis.close();
+      System.out.format("Done! %d records read and written \n", counter); 
+    }
+
     public static void main(String[] args)
     {
         if (args.length == 0)
@@ -192,23 +247,45 @@ public class BulkLoad
         Config.setClientMode(true);
 
         // Create output directory that has keyspace and table name in the path
-        File outputDir = new File(DEFAULT_OUTPUT_DIR + File.separator + KEYSPACE + File.separator + TABLE);
-        if (!outputDir.exists() && !outputDir.mkdirs())
+        File outputDirNetflow = new File(DEFAULT_OUTPUT_DIR + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
+        File outputDirConnections = new File(DEFAULT_OUTPUT_DIR + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
+        if (!outputDirNetflow.exists() && !outputDirNetflow.mkdirs())
         {
-            throw new RuntimeException("Cannot create output directory: " + outputDir);
+            throw new RuntimeException("Cannot create netflow output directory: " + outputDirNetflow);
         }
-        // Prepare SSTable writer
-        CQLSSTableWriter.Builder builder = CQLSSTableWriter.builder();
+        if (!outputDirConnections.exists() && !outputDirConnections.mkdirs())
+        {
+            throw new RuntimeException("Cannot create connections output directory: " + outputDirConnections);
+        }
+
+        // Prepare NETFLOW SSTable writer
+        CQLSSTableWriter.Builder netflow_builder = CQLSSTableWriter.builder();
         // set output directory
-        builder.inDirectory(outputDir)
+        netflow_builder.inDirectory(outputDirNetflow)
                // set target schema
-               .forTable(SCHEMA)
+               .forTable(NETFLOWSCHEMA)
                // set CQL statement to put data
-               .using(INSERT_STMT)
+               .using(INSERT_NETFLOW)
                // set partitioner if needed
                // default is Murmur3Partitioner so set if you use different one.
                .withPartitioner(new Murmur3Partitioner());
-        CQLSSTableWriter writer = builder.build();
+        CQLSSTableWriter netflow_writer = netflow_builder.build();
+
+        // Prepare CONNECTIONS SSTable writer
+        CQLSSTableWriter.Builder connections_builder = CQLSSTableWriter.builder();
+        // set output directory
+        connections_builder.inDirectory(outputDirConnections)
+               // set target schema
+               .forTable(CONNECTIONSCHEMA)
+               // set CQL statement to put data
+               .using(INSERT_CONNECTION)
+               // set partitioner if needed
+               // default is Murmur3Partitioner so set if you use different one.
+               .withPartitioner(new Murmur3Partitioner());
+        CQLSSTableWriter connections_writer = connections_builder.build();
+
+
+
 
 
         List<String> fileArray =  new ArrayList<String>();
@@ -219,7 +296,13 @@ public class BulkLoad
 
         for (String fileName: fileArray) {
             try {
-                readFromNIO(fileName, writer);
+                if (fileName.contains("partition")) {
+                    readFromNIOPartition(fileName, connections_writer);
+                }
+                else if (fileName.contains("connections")) {
+                    readFromNIONetflow(fileName, netflow_writer);
+                }
+
             } catch (IOException e) {
 			    e.printStackTrace();
 		    }
@@ -228,7 +311,8 @@ public class BulkLoad
 
         try
         {
-            writer.close();
+            connections_writer.close();
+            netflow_writer.close();
         }
         catch (IOException ignore) {}
     }
