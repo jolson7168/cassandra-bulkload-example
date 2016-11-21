@@ -225,8 +225,9 @@ public class BulkLoad
 
 
         try {
-            String theLine = String.format("%d,%d,%d,%d\n", localIp, remoteIp, port, connectionId);
-            Files.write(file, theLine, Charset.forName("UTF-8"), StandardOpenOption.APPEND);
+            
+            List<String> lines = Arrays.asList(String.format("%d,%d,%d,%d\n", localIp, remoteIp, port, connectionId));            
+            Files.write(file, lines, Charset.forName("UTF-8"), StandardOpenOption.APPEND);
             writer.addRow(localIp, port, remoteIp, connectionId);
             counter = counter + 1;
         }
