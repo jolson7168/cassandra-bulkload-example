@@ -25,6 +25,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 
+
+
 import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -202,6 +204,11 @@ public class BulkLoad
       bb.clear();
       long len = 0;
       int counter = 0;
+
+
+      Path file = Paths.get("./logs/log2.txt");
+
+
       while ((len = channel.read(bb))!= -1){
         bb.flip();
         long localIp = bb.getInt() & 0xffffffffL; 
@@ -215,7 +222,8 @@ public class BulkLoad
 
 
         try {
-            System.out.format("%d, %d, %d, %d\n", localIp, remoteIp, port, connectionId); 
+            String theLine = String.format("%d,%d,%d,%d\n", localIp, remoteIp, port, connectionId);
+            Files.write(file, theLine, Charset.forName("UTF-8"), StandardOpenOption.APPEND);
             writer.addRow(localIp, port, remoteIp, connectionId);
             counter = counter + 1;
         }
