@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS connections (
 	local_ip	int,
 	local_port	smallint,
 	remote_ip	int,
-    connection_id int
+    connection_id int,
 	primary key (local_ip, remote_ip, local_port)
 );
 
