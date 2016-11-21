@@ -202,7 +202,7 @@ public class BulkLoad
       int counter = 0;
 
 
-      Path file = Paths.get("log2.txt");
+      Path file = Paths.get("/tmp/log2.txt");
 
 
       while ((len = channel.read(bb))!= -1){
