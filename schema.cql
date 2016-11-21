@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS connections (
 	local_port	smallint,
 	remote_ip	int,
     connection_id int,
-	primary key (local_ip, remote_ip, local_port)
+	primary key ((local_ip, remote_ip, local_port))
 );
 
 CREATE TABLE IF NOT EXISTS netflow (
@@ -20,3 +20,5 @@ CREATE TABLE IF NOT EXISTS netflow (
 	end_reason	    int,
 	primary key (connection_id, time_index)
 );
+
+

@@ -86,7 +86,7 @@ public class BulkLoad
 	                                                        "local_port	int, "+
 	                                                        "remote_ip	bigint," +
                                                             "connection_id bigint," +
-	                                                        "primary key (local_ip, remote_ip, local_port) )", KEYSPACE, CONNECTIONSTABLE);
+	                                                        "primary key ((local_ip, remote_ip, local_port)) )", KEYSPACE, CONNECTIONSTABLE);
 
 
 
