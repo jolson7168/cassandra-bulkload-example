@@ -215,7 +215,7 @@ public class BulkLoad
 
 
         try {
-            //System.out.format("%d, %d, %d, %d\n", localIp, remoteIp, port, connectionId); 
+            System.out.format("%d, %d, %d, %d\n", localIp, remoteIp, port, connectionId); 
             writer.addRow(localIp, port, remoteIp, connectionId);
             counter = counter + 1;
         }
