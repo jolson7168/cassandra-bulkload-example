@@ -13,17 +13,9 @@
  */
 package bulkload;
 
-//import java.io.BufferedReader;
-//import java.io.File;
-//import java.io.Path;
-//import java.io.Files;
-//import java.io.IOException;
-//import java.io.InputStreamReader;
-//import java.io.InputStream;
+
 import java.io.*;
 import java.nio.file.*;
-//import java.nio.file.Files;
-//import java.nio.file.Paths;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
@@ -210,7 +202,7 @@ public class BulkLoad
       int counter = 0;
 
 
-      Path file = Paths.get("/tmp/log2.txt");
+      Path file = Paths.get("log2.txt");
 
 
       while ((len = channel.read(bb))!= -1){
@@ -226,7 +218,7 @@ public class BulkLoad
 
 
         try {
-            String theLine = String.format("%d,%d,%d,%d\n", localIp, remoteIp, port, connectionId);
+            String theLine = String.format("%d,%d,%d,%d", localIp, remoteIp, port, connectionId);
             List<String> lines = Arrays.asList(theLine);            
             Files.write(file, lines, Charset.forName("UTF-8"), StandardOpenOption.APPEND);
             writer.addRow(localIp, port, remoteIp, connectionId);
