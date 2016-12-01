@@ -52,7 +52,7 @@ public class BulkLoad
 {
 
     /** Default output directory */
-    public static final String DEFAULT_OUTPUT_DIR = "./data";
+    public static final String DEFAULT_OUTPUT_DIR = "/mnt/f1pool/sstables";
 
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -239,6 +239,23 @@ public class BulkLoad
       System.out.format("Done! %d records read and written \n", counter); 
     }
 
+    private static String getHostname() {
+        
+        String hostname = "Unknown";
+        try
+        {
+                InetAddress addr;
+                addr = InetAddress.getLocalHost();
+                hostname = addr.getHostName();
+        }
+        catch (UnknownHostException ex)
+        {
+        
+        }
+        return hostname;
+        
+    }
+
     public static void main(String[] args)
     {
         if (args.length == 0)
@@ -251,8 +268,8 @@ public class BulkLoad
         Config.setClientMode(true);
 
         // Create output directory that has keyspace and table name in the path
-        File outputDirNetflow = new File(DEFAULT_OUTPUT_DIR + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
-        File outputDirConnections = new File(DEFAULT_OUTPUT_DIR + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
+        File outputDirNetflow = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
+        File outputDirConnections = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
         if (!outputDirNetflow.exists() && !outputDirNetflow.mkdirs())
         {
             throw new RuntimeException("Cannot create netflow output directory: " + outputDirNetflow);
