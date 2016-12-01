@@ -67,16 +67,17 @@ public class BulkLoad
      * It is important not to forget adding keyspace name before table name,
      * otherwise CQLSSTableWriter throws exception.
      */
+
+
     public static final String NETFLOWSCHEMA = String.format("CREATE TABLE %s.%s ("+
-                                                          "connection_id    int, " +
-                                                          "time_index       int, " +
-                                                          "num_packets	    bigint, " +
-                                                          "num_bytes	    bigint, " +
-                                                          "start_time	    bigint, " +
-                                                          "end_time	        bigint, " +
-                                                          "protocol	        int, " +
-                                                          "end_reason	    int, " +
-                                                          "PRIMARY KEY (connection_id, time_index) )" , KEYSPACE, NETFLOWTABLE);
+                                                          "connection_id    bigint, " +
+                                                          "start_time       bigint, " +
+                                                          "end_time 	    bigint, " +
+                                                          "protocol 	    int, " +
+                                                          "dir_reason	    int, " +
+                                                          "num_packets      bigint, " +
+                                                          "num_bytes	    bigint, " +                                                          
+                                                          "PRIMARY KEY (connection_id, start_time))" , KEYSPACE, NETFLOWTABLE);
 
 
     public static final String CONNECTIONSCHEMA = String.format("CREATE TABLE %s.%s (" +
@@ -94,9 +95,9 @@ public class BulkLoad
      * It is like prepared statement. You fill in place holder for each data.
      */
     public static final String INSERT_NETFLOW = String.format("INSERT INTO %s.%s (" +
-                                                           "connection_id,time_index,num_packets,num_bytes,start_time,end_time,protocol,end_reason" +
+                                                           "connection_id,start_time,end_time,protocol,dir_reason,num_packets,num_bytes" +
                                                            ") VALUES (" +
-                                                               "?, ?, ?, ?, ?, ?, ?, ?" +
+                                                               "?, ?, ?, ?, ?, ?, ?" +
                                                            ")", KEYSPACE, NETFLOWTABLE);
 
     public static final String INSERT_CONNECTION = String.format("INSERT INTO %s.%s (" +
@@ -137,7 +138,7 @@ public class BulkLoad
       System.out.format("Starting netflow file: %s\n", fileName); 
       FileInputStream fis = new FileInputStream(new File(fileName));
       FileChannel channel = fis.getChannel();
-      ByteBuffer bb = ByteBuffer.allocateDirect(37);
+      ByteBuffer bb = ByteBuffer.allocateDirect(41);
       bb.order(ByteOrder.LITTLE_ENDIAN);
       bb.clear();
       long len = 0;
@@ -156,22 +157,24 @@ public class BulkLoad
         if (endTime < 2000000000) {
             endTime = endTime * 1000;
         }
-        String localIp = toNtoa(bb.getInt() & 0xffffffffL); 
-        String remoteIp = toNtoa(bb.getInt() & 0xffffffffL); 
+        //String localIp = toNtoa(bb.getInt() & 0xffffffffL); 
+        //String remoteIp = toNtoa(bb.getInt() & 0xffffffffL); 
+        long sourceIP = bb.getInt() & 0xffffffffL;
+        long targetIP = bb.getInt() & 0xffffffffL;
         int port = bb.getShort() & 0xffff;
         int protocol = bb.getShort() & 0xffff;
         int dirAndReason= bb.get();
+        long connectionId = bb.getInt() & 0xffffffffL; 
 
         // Send to Cassandra
         // We use Java types here based on
         // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
 
-        // TODO: fix this...
-        int timeIndex = 0;
+
 
         try {
-            System.out.format("%s, %s, %d, %d, %d, %d, %d, %d, %d, %d \n", localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason); 
-            writer.addRow(localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason);
+            //System.out.format("%s, %s, %d, %d, %d, %d, %d, %d, %d, %d \n", localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason); 
+            writer.addRow(connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes);
             counter = counter + 1;
         }
         catch (InvalidRequestException e)
@@ -202,9 +205,6 @@ public class BulkLoad
       int counter = 0;
 
 
-      Path file = Paths.get("/tmp/log2.txt");
-
-
       while ((len = channel.read(bb))!= -1){
         bb.flip();
         long localIp = bb.getInt() & 0xffffffffL; 
@@ -220,7 +220,6 @@ public class BulkLoad
         try {
             String theLine = String.format("%d,%d,%d,%d", localIp, remoteIp, port, connectionId);
             List<String> lines = Arrays.asList(theLine);            
-            Files.write(file, lines, Charset.forName("UTF-8"), StandardOpenOption.APPEND);
             writer.addRow(localIp, port, remoteIp, connectionId);
             counter = counter + 1;
         }
@@ -304,7 +303,7 @@ public class BulkLoad
                 if (fileName.contains("partition")) {
                     readFromNIOPartition(fileName, connections_writer);
                 }
-                else if (fileName.contains("connections")) {
+                else if (fileName.contains("expanded")) {
                     readFromNIONetflow(fileName, netflow_writer);
                 }
 
