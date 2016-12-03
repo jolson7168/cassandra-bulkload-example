@@ -52,7 +52,8 @@ public class BulkLoad
 {
 
     /** Default output directory */
-    public static final String DEFAULT_OUTPUT_DIR = "/mnt/f1pool/sstables";
+    //public static final String DEFAULT_OUTPUT_DIR = "/mnt/f1pool/sstables";
+    public static final String DEFAULT_OUTPUT_DIR = "/tmp";
 
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -143,56 +144,62 @@ public class BulkLoad
       bb.clear();
       long len = 0;
       int counter = 0;
-      while ((len = channel.read(bb))!= -1){
-        bb.flip();
-        long numPackets = bb.getInt() & 0xffffffffL; 
-        long numBytes = bb.getInt() & 0xffffffffL; 
-        //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
-        long startTime = bb.getLong();
-        if (startTime < 2000000000) {
-            startTime = startTime * 1000;
-        }
-        //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
-        long endTime = bb.getLong();               
-        if (endTime < 2000000000) {
-            endTime = endTime * 1000;
-        }
-        //String localIp = toNtoa(bb.getInt() & 0xffffffffL); 
-        //String remoteIp = toNtoa(bb.getInt() & 0xffffffffL); 
-        long sourceIP = bb.getInt() & 0xffffffffL;
-        long targetIP = bb.getInt() & 0xffffffffL;
-        int port = bb.getShort() & 0xffff;
-        int protocol = bb.getShort() & 0xffff;
-        int dirAndReason= bb.get();
-        long connectionId = bb.getInt() & 0xffffffffL; 
 
-        // Send to Cassandra
-        // We use Java types here based on
-        // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
+      try{
+          PrintWriter fileWriter = new PrintWriter(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator +"log.txt", "UTF-8");
+          while ((len = channel.read(bb))!= -1){
+            bb.flip();
+            long numPackets = bb.getInt() & 0xffffffffL; 
+            long numBytes = bb.getInt() & 0xffffffffL; 
+            //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
+            long startTime = bb.getLong();
+            if (startTime < 2000000000) {
+                startTime = startTime * 1000;
+            }
+            //No overflow here for test data. TODO: How to convert C 64bit unsigned to Java?
+            long endTime = bb.getLong();               
+            if (endTime < 2000000000) {
+                endTime = endTime * 1000;
+            }
+            //String localIp = toNtoa(bb.getInt() & 0xffffffffL); 
+            //String remoteIp = toNtoa(bb.getInt() & 0xffffffffL); 
+            long sourceIP = bb.getInt() & 0xffffffffL;
+            long targetIP = bb.getInt() & 0xffffffffL;
+            int port = bb.getShort() & 0xffff;
+            int protocol = bb.getShort() & 0xffff;
+            int dirAndReason= bb.get();
+            long connectionId = bb.getInt() & 0xffffffffL; 
+
+            // Send to Cassandra
+            // We use Java types here based on
+            // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
 
 
 
-        try {
-            //System.out.format("%s, %s, %d, %d, %d, %d, %d, %d, %d, %d \n", localIp, remoteIp, port, timeIndex, numPackets, numBytes, startTime, endTime, protocol, dirAndReason); 
-            writer.addRow(connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes);
-            counter = counter + 1;
+            try {
+                fileWriter.println(String.format("%d, %d, %d, %d, %d, %d, %d, %d", counter, connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes)); 
+                writer.addRow(connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes);
+                counter = counter + 1;
+            }
+            catch (InvalidRequestException e)
+            {
+                e.printStackTrace();
+            }
+
+            bb.clear();
+            if ((counter % 100000) == 0) {
+                System.out.format("   Processed: %d records\n", counter); 
+            }
         }
-        catch (InvalidRequestException e)
-        {
-            e.printStackTrace();
-        }
-
-        bb.clear();
-        if ((counter % 10000) == 0) {
-            System.out.format("   Processed: %d records\n", counter); 
-        }
-        
-      }
-      channel.close();
-      fis.close();
-      System.out.format("Done! %d records read and written \n", counter); 
+        channel.close();
+        fis.close();
+        fileWriter.close();
+        System.out.format("Done! %d records read and written \n", counter); 
     }
+    catch (IOException e) {
 
+    }
+}
 
     private static void readFromNIOPartition(String fileName, CQLSSTableWriter writer) throws IOException{
       System.out.format("Starting connection file: %s\n", fileName); 
@@ -229,7 +236,7 @@ public class BulkLoad
         }
 
         bb.clear();
-        if ((counter % 10000) == 0) {
+        if ((counter % 100000) == 0) {
             System.out.format("   Processed: %d records\n", counter); 
         }
         
