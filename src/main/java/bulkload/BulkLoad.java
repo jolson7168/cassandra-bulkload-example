@@ -177,7 +177,7 @@ public class BulkLoad
 
 
             try {
-                fileWriter.println(String.format("%d, %d, %d, %d, %d, %d, %d, %d", counter, connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes)); 
+                fileWriter.println(String.format("%d,%d,%d,%d,%d,%d,%d,%d", counter, connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes)); 
                 writer.addRow(connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes);
                 counter = counter + 1;
             }
