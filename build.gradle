@@ -20,5 +20,5 @@ dependencies {
 task run(type:JavaExec) {
     main = 'bulkload.BulkLoad'
     classpath = sourceSets.main.runtimeClasspath
-    args './data/allFiles.txt'
+    args './data/allFiles.txt', '1'
 }

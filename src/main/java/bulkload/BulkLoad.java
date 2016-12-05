@@ -52,8 +52,8 @@ public class BulkLoad
 {
 
     /** Default output directory */
-    //public static final String DEFAULT_OUTPUT_DIR = "/mnt/f1pool/sstables";
-    public static final String DEFAULT_OUTPUT_DIR = "/tmp";
+    public static final String DEFAULT_OUTPUT_DIR = "/mnt/f1pool/sstables";
+    //public static final String DEFAULT_OUTPUT_DIR = "/tmp";
 
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -146,7 +146,7 @@ public class BulkLoad
       int counter = 0;
 
       try{
-          PrintWriter fileWriter = new PrintWriter(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator +"log.txt", "UTF-8");
+          //PrintWriter fileWriter = new PrintWriter(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator +"log.txt", "UTF-8");
           while ((len = channel.read(bb))!= -1){
             bb.flip();
             long numPackets = bb.getInt() & 0xffffffffL; 
@@ -174,10 +174,8 @@ public class BulkLoad
             // We use Java types here based on
             // http://www.datastax.com/drivers/java/2.0/com/datastax/driver/core/DataType.Name.html#asJavaClass%28%29
 
-
-
             try {
-                fileWriter.println(String.format("%d,%d,%d,%d,%d,%d,%d,%d", counter, connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes)); 
+                //fileWriter.println(String.format("%d,%d,%d,%d,%d,%d,%d,%d", counter, connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes)); 
                 writer.addRow(connectionId, startTime, endTime, protocol, dirAndReason, numPackets, numBytes);
                 counter = counter + 1;
             }
@@ -193,7 +191,7 @@ public class BulkLoad
         }
         channel.close();
         fis.close();
-        fileWriter.close();
+        //fileWriter.close();
         System.out.format("Done! %d records read and written \n", counter); 
     }
     catch (IOException e) {
@@ -267,7 +265,7 @@ public class BulkLoad
     {
         if (args.length == 0)
         {
-            System.out.println("usage: java bulkload.BulkLoad <file containing .bin path + file names>");
+            System.out.println("usage: java bulkload.BulkLoad <file containing .bin path + file names>, <path offset>");
             return;
         }
 
@@ -275,8 +273,8 @@ public class BulkLoad
         Config.setClientMode(true);
 
         // Create output directory that has keyspace and table name in the path
-        File outputDirNetflow = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
-        File outputDirConnections = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname() + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
+        File outputDirNetflow = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname()+ File.separator + args[1] + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
+        File outputDirConnections = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname()+ File.separator + args[1] + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
         if (!outputDirNetflow.exists() && !outputDirNetflow.mkdirs())
         {
             throw new RuntimeException("Cannot create netflow output directory: " + outputDirNetflow);
@@ -318,9 +316,8 @@ public class BulkLoad
 
         List<String> fileArray =  new ArrayList<String>();
 
-        for (String fileName: args) {
-            fileArray.addAll(readFile(fileName));
-        }
+
+        fileArray.addAll(readFile(args[0]));
 
         for (String fileName: fileArray) {
             try {
