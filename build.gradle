@@ -14,11 +14,14 @@ repositories {
 dependencies {
     compile group: 'org.apache.cassandra', name: 'cassandra-all', version: cassandra_version
     compile group: 'net.sf.supercsv', name: 'super-csv', version: supercsv_version
+    compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.7'
+    compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.7'
+    compile 'com.rabbitmq:amqp-client:4.0.0'
     testCompile group: 'junit', name: 'junit', version: '4.11'
 }
 
 task run(type:JavaExec) {
     main = 'bulkload.BulkLoad'
     classpath = sourceSets.main.runtimeClasspath
-    args './data/allFiles.txt', '1'
+    args '192.168.111.10', 'rawDataQ', 'test', 'test', '1', '/opt/data', '/tmp'
 }

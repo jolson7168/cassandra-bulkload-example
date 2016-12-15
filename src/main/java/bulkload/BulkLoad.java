@@ -19,30 +19,23 @@ import java.nio.file.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
-import java.nio.charset.Charset;
 
-
-import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import org.supercsv.io.CsvListReader;
-import org.supercsv.prefs.CsvPreference;
 
 import org.apache.cassandra.config.Config;
 import org.apache.cassandra.dht.Murmur3Partitioner;
 import org.apache.cassandra.exceptions.InvalidRequestException;
 import org.apache.cassandra.io.sstable.CQLSSTableWriter;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import com.rabbitmq.client.*;
     
 
 /**
@@ -50,10 +43,8 @@ import org.apache.cassandra.io.sstable.CQLSSTableWriter;
  */
 public class BulkLoad
 {
+    private static final Logger logger = LogManager.getLogger("SSTableConverter");
 
-    /** Default output directory */
-    public static final String DEFAULT_OUTPUT_DIR = "/mnt/f1pool/sstables";
-    //public static final String DEFAULT_OUTPUT_DIR = "/tmp";
 
     public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -108,22 +99,6 @@ public class BulkLoad
                                                            ")", KEYSPACE, CONNECTIONSTABLE);
 
 
-    private static List<String> readFile(String fileName) {
-
-		List<String> list = new ArrayList<>();
-
-		try (Stream<String> stream = Files.lines(Paths.get(fileName))) {
-
-			list = stream.map(String::toLowerCase).collect(Collectors.toList());
-
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-
-        return list;
-    }
-
-
     private static String toNtoa(long raw) {
         byte[] b = new byte[] {(byte)(raw >> 24), (byte)(raw >> 16), (byte)(raw >> 8), (byte)raw};
         try {
@@ -136,7 +111,7 @@ public class BulkLoad
 
 
     private static void readFromNIONetflow(String fileName, CQLSSTableWriter writer) throws IOException{
-      System.out.format("Starting netflow file: %s\n", fileName); 
+      logger.info(String.format("   Starting netflow file: %s", fileName));
       FileInputStream fis = new FileInputStream(new File(fileName));
       FileChannel channel = fis.getChannel();
       ByteBuffer bb = ByteBuffer.allocateDirect(41);
@@ -185,14 +160,14 @@ public class BulkLoad
             }
 
             bb.clear();
-            if ((counter % 100000) == 0) {
-                System.out.format("   Processed: %d records\n", counter); 
+            if ((counter % 1000000) == 0) {
+                logger.info(String.format("      Processed: %d records", counter));
             }
         }
         channel.close();
         fis.close();
         //fileWriter.close();
-        System.out.format("Done! %d records read and written \n", counter); 
+        logger.info(String.format("Done! %d records read and written \n", counter));
     }
     catch (IOException e) {
 
@@ -200,7 +175,7 @@ public class BulkLoad
 }
 
     private static void readFromNIOPartition(String fileName, CQLSSTableWriter writer) throws IOException{
-      System.out.format("Starting connection file: %s\n", fileName); 
+      logger.info(String.format("   Starting connection file: %s", fileName));
       FileInputStream fis = new FileInputStream(new File(fileName));
       FileChannel channel = fis.getChannel();
       ByteBuffer bb = ByteBuffer.allocateDirect(14);
@@ -234,14 +209,14 @@ public class BulkLoad
         }
 
         bb.clear();
-        if ((counter % 100000) == 0) {
-            System.out.format("   Processed: %d records\n", counter); 
+        if ((counter % 1000000) == 0) {
+            logger.info(String.format("      Processed: %d records", counter));
         }
         
       }
       channel.close();
       fis.close();
-      System.out.format("Done! %d records read and written \n", counter); 
+      logger.info(String.format("Done! %d records read and written", counter));
     }
 
     private static String getHostname() {
@@ -261,84 +236,112 @@ public class BulkLoad
         
     }
 
-    public static void main(String[] args)
+    public static void main(String[] args) throws java.io.IOException, java.lang.InterruptedException, java.util.concurrent.TimeoutException
     {
-        if (args.length == 0)
+
+        if (args.length != 7)
         {
-            System.out.println("usage: java bulkload.BulkLoad <file containing .bin path + file names>, <path offset>");
+            System.out.println("usage: java bulkload.BulkLoad <rabbit mq ip>, <queue name>, <login>, <password>, <instance>, <working root>, <temp root>");
             return;
         }
 
+        final String instance = args[4];
+        final String writeRoot = args[5];
+        final String tmpDir = args[6];
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost(args[0]);
+        factory.setUsername(args[2]);
+        factory.setPassword(args[3]);
+        Connection connection = factory.newConnection();
+        final Channel channel = connection.createChannel();
+
+        channel.queueDeclare(args[1], true, false, false, null);
+        channel.basicQos(1);
+
         // magic!
         Config.setClientMode(true);
+        Consumer consumer = new DefaultConsumer(channel) {
+            @Override
+            public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body)
+                    throws IOException {
+                String message = new String(body, "UTF-8").trim();
+                logger.info(String.format("Processing file: %s", message));
+                Path source = Paths.get(message);
+                String fname = source.getFileName().toString();
+                String fnameStripped = source.getFileName().toString().replace("expanded","").replace(".bin","");
+                Path destination = Paths.get(tmpDir+File.separator+fname);
 
-        // Create output directory that has keyspace and table name in the path
-        File outputDirNetflow = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname()+ File.separator + args[1] + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
-        File outputDirConnections = new File(DEFAULT_OUTPUT_DIR + File.separator + getHostname()+ File.separator + args[1] + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
-        if (!outputDirNetflow.exists() && !outputDirNetflow.mkdirs())
-        {
-            throw new RuntimeException("Cannot create netflow output directory: " + outputDirNetflow);
-        }
-        if (!outputDirConnections.exists() && !outputDirConnections.mkdirs())
-        {
-            throw new RuntimeException("Cannot create connections output directory: " + outputDirConnections);
-        }
+                try {
+                    logger.info(String.format("   Copying file from %s to %s", source.toString(), destination.toString()));
+                    Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
 
-        // Prepare NETFLOW SSTable writer
-        CQLSSTableWriter.Builder netflow_builder = CQLSSTableWriter.builder();
-        // set output directory
-        netflow_builder.inDirectory(outputDirNetflow)
-               // set target schema
-               .forTable(NETFLOWSCHEMA)
-               // set CQL statement to put data
-               .using(INSERT_NETFLOW)
-               // set partitioner if needed
-               // default is Murmur3Partitioner so set if you use different one.
-               .withPartitioner(new Murmur3Partitioner());
-        CQLSSTableWriter netflow_writer = netflow_builder.build();
+                    //opt/mnt/1474537440000/netflow/netflow
+                    File outputDirNetflow = new File(writeRoot+File.separator+fnameStripped + File.separator + KEYSPACE + File.separator + NETFLOWTABLE);
+                    File outputDirConnections = new File(writeRoot+File.separator + "connections" + File.separator + KEYSPACE + File.separator + CONNECTIONSTABLE);
 
-        // Prepare CONNECTIONS SSTable writer
-        CQLSSTableWriter.Builder connections_builder = CQLSSTableWriter.builder();
-        // set output directory
-        connections_builder.inDirectory(outputDirConnections)
-               // set target schema
-               .forTable(CONNECTIONSCHEMA)
-               // set CQL statement to put data
-               .using(INSERT_CONNECTION)
-               // set partitioner if needed
-               // default is Murmur3Partitioner so set if you use different one.
-               .withPartitioner(new Murmur3Partitioner());
-        CQLSSTableWriter connections_writer = connections_builder.build();
+                    try {
+                        if (fname.contains("partition")) {
+                            if (!outputDirConnections.exists() && !outputDirConnections.mkdirs())
+                            {
+                                throw new RuntimeException("Cannot create connections output directory: " + outputDirConnections);
+                            }
+                            // Prepare CONNECTIONS SSTable writer
+                            CQLSSTableWriter.Builder connections_builder = CQLSSTableWriter.builder();
+                            // set output directory
+                            connections_builder.inDirectory(outputDirConnections)
+                                    // set target schema
+                                    .forTable(CONNECTIONSCHEMA)
+                                    // set CQL statement to put data
+                                    .using(INSERT_CONNECTION)
+                                    // set partitioner if needed
+                                    // default is Murmur3Partitioner so set if you use different one.
+                                    .withPartitioner(new Murmur3Partitioner());
+                            CQLSSTableWriter connections_writer = connections_builder.build();
+                            readFromNIOPartition(destination.toString(), connections_writer);
+                            connections_writer.close();
+                        }
+                        else if (fname.contains("expanded")) {
+                            if (!outputDirNetflow.exists() && !outputDirNetflow.mkdirs())
+                            {
+                                throw new RuntimeException("Cannot create netflow output directory: " + outputDirNetflow);
+                            }
+                            // Prepare NETFLOW SSTable writer
+                            CQLSSTableWriter.Builder netflow_builder = CQLSSTableWriter.builder();
+                            // set output directory
+                            netflow_builder.inDirectory(outputDirNetflow)
+                                    // set target schema
+                                    .forTable(NETFLOWSCHEMA)
+                                    // set CQL statement to put data
+                                    .using(INSERT_NETFLOW)
+                                    // set partitioner if needed
+                                    // default is Murmur3Partitioner so set if you use different one.
+                                    .withPartitioner(new Murmur3Partitioner());
+                            CQLSSTableWriter netflow_writer = netflow_builder.build();
+                            readFromNIONetflow(destination.toString(), netflow_writer);
+                            netflow_writer.close();
+                        }
 
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
 
+                    try {
+                        logger.info(String.format("Deleting file: %s", destination.toString()));
+                        Files.delete(destination);
+                    }
+                    catch (NoSuchFileException e) {
+                        logger.error(String.format("   Could not delete file: %s", destination.toString()));
+                    }
+                    logger.info(String.format("Acking queue for file: %s", message));
+                    channel.basicAck(envelope.getDeliveryTag(), false);
 
-
-
-        List<String> fileArray =  new ArrayList<String>();
-
-
-        fileArray.addAll(readFile(args[0]));
-
-        for (String fileName: fileArray) {
-            try {
-                if (fileName.contains("partition")) {
-                    readFromNIOPartition(fileName, connections_writer);
                 }
-                else if (fileName.contains("expanded")) {
-                    readFromNIONetflow(fileName, netflow_writer);
+                catch (NoSuchFileException e) {
+                    logger.error(String.format("      File |%s| does not exist", source.toString()));
                 }
+            }
+        };
 
-            } catch (IOException e) {
-			    e.printStackTrace();
-		    }
-   
-        }
-
-        try
-        {
-            connections_writer.close();
-            netflow_writer.close();
-        }
-        catch (IOException ignore) {}
+        channel.basicConsume(args[1], false, consumer);
     }
 }
