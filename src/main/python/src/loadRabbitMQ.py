@@ -60,7 +60,10 @@ def main(argv):
     channel = connection.channel()
     count = 0
     for line in file:
-        channel.basic_publish(cfg.get('server', 'exchange'),cfg.get('server', 'key'),body=line)
+        if channel.basic_publish(cfg.get('server', 'exchange'),cfg.get('server', 'key'),body=line, mandatory=1):
+            logger.info('   Delivered: {0}'.format(line))
+        else:
+            logger.info('   NOT Delivered: {0}'.format(line))
         count = count + 1
         if count % 1000 == 0:
             logger.info('   Processed line: '+str(count))
