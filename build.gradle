@@ -12,6 +12,7 @@ repositories {
 }
 
 dependencies {
+    compile group: 'commons-io', name: 'commons-io', version: '2.5'
     compile group: 'org.apache.cassandra', name: 'cassandra-all', version: cassandra_version
     compile group: 'net.sf.supercsv', name: 'super-csv', version: supercsv_version
     compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.7'
@@ -23,5 +24,14 @@ dependencies {
 task run(type:JavaExec) {
     main = 'bulkload.BulkLoad'
     classpath = sourceSets.main.runtimeClasspath
-    args '192.168.111.10', 'rawDataQ', 'test', 'test', '1', '/opt/data', '/tmp'
+    args '192.168.111.10', 'rawDataQ', 'test', 'test', '1', '/opt/data', '/tmp', '/tmp/tmp'
+}
+
+jar {
+    from {
+        configurations.compile.collect {it.isDirectory()?it:zipTree(it)}
+    }
+    manifest {
+        attributes 'Main-Class':'bulkload.BulkLoad'
+    }
 }
