@@ -19,10 +19,9 @@ import java.nio.file.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
-
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-
+import org.apache.commons.io.FileUtils;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Arrays;
@@ -167,7 +166,7 @@ public class BulkLoad
         channel.close();
         fis.close();
         //fileWriter.close();
-        logger.info(String.format("Done! %d records read and written \n", counter));
+        logger.info(String.format("   Done! %d records read and written ", counter));
     }
     catch (IOException e) {
 
@@ -216,7 +215,7 @@ public class BulkLoad
       }
       channel.close();
       fis.close();
-      logger.info(String.format("Done! %d records read and written", counter));
+      logger.info(String.format("   Done! %d records read and written", counter));
     }
 
     private static String getHostname() {
@@ -236,18 +235,27 @@ public class BulkLoad
         
     }
 
+    private static long getUsableDiskSpace(String root) {
+
+        File file = new File(root);
+        return file.getUsableSpace();
+    }
+
     public static void main(String[] args) throws java.io.IOException, java.lang.InterruptedException, java.util.concurrent.TimeoutException
     {
 
-        if (args.length != 7)
+        if (args.length != 9)
         {
-            System.out.println("usage: java bulkload.BulkLoad <rabbit mq ip>, <queue name>, <login>, <password>, <instance>, <working root>, <temp root>");
+            System.out.println("usage: java bulkload.BulkLoad <rabbit mq ip>, <queue name>, <login>, <password>, <instance>, <working root>, <temp root>, <target dir>, <required disk space>");
             return;
         }
 
         final String instance = args[4];
         final String writeRoot = args[5];
         final String tmpDir = args[6];
+        final String targetRoot = args[8];
+        final long neededDiskSpace = Long.parseLong(args[7]);
+
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(args[0]);
         factory.setUsername(args[2]);
@@ -264,8 +272,14 @@ public class BulkLoad
             @Override
             public void handleDelivery(String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body)
                     throws IOException {
+                long diskSpace = getUsableDiskSpace(writeRoot);
                 String message = new String(body, "UTF-8").trim();
+                if (diskSpace < neededDiskSpace) {
+                    logger.error(String.format("Out of disk space prior to processing file: %s. Exiting!", message));
+                    System.exit(0);
+                }
                 logger.info(String.format("Processing file: %s", message));
+                logger.info(String.format("   Usable disk space %d bytes out of %d bytes required", diskSpace, neededDiskSpace ));
                 Path source = Paths.get(message);
                 String fname = source.getFileName().toString();
                 String fnameStripped = source.getFileName().toString().replace("expanded","").replace(".bin","");
@@ -324,15 +338,37 @@ public class BulkLoad
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-
+                    // here
+                    logger.info(String.format("  Copying directory %s to %s", writeRoot+File.separator+fnameStripped,targetRoot+File.separator+fnameStripped));
+                    File srcDir = new File(writeRoot+File.separator+fnameStripped);
+                    File destDir = new File(targetRoot+File.separator+fnameStripped);
                     try {
-                        logger.info(String.format("Deleting file: %s", destination.toString()));
+                        //
+                        // Copy source directory into destination directory
+                        // including its child directories and files. When
+                        // the destination directory is not exists it will
+                        // be created. This copy process also preserve the
+                        // date information of the file.
+                        //
+                        FileUtils.copyDirectory(srcDir, destDir);
+                        try {
+                            logger.info(String.format("  Deleting directory %s ", writeRoot+File.separator+fnameStripped));
+                            FileUtils.deleteDirectory(srcDir);
+                        }
+                        catch (IOException e) {
+                            logger.error(String.format("   Could not delete directory %s", writeRoot+File.separator+fnameStripped));
+                        }
+                    } catch (IOException e) {
+                        logger.error(String.format("   Could not copy directory from %s to %s", writeRoot+File.separator+fnameStripped,targetRoot+File.separator+fnameStripped));
+                    }
+                    try {
+                        logger.info(String.format("  Deleting file: %s", destination.toString()));
                         Files.delete(destination);
                     }
                     catch (NoSuchFileException e) {
                         logger.error(String.format("   Could not delete file: %s", destination.toString()));
                     }
-                    logger.info(String.format("Acking queue for file: %s", message));
+                    logger.info(String.format("  Acking queue for file: %s", message));
                     channel.basicAck(envelope.getDeliveryTag(), false);
 
                 }
